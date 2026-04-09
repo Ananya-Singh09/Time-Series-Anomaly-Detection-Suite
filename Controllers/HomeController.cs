@@ -8,37 +8,49 @@ namespace TimeAnomalyWeb.Controllers
     {
         public IActionResult Index()
         {
-            var data = GenerateData();
-
-            AnomalyDetector detector = new AnomalyDetector();
-            var result = detector.Detect(data);
-
-            return View(result);
+            return View(new List<TimeData>());
         }
 
-        private List<TimeData> GenerateData()
+        [HttpPost]
+        public IActionResult Upload(IFormFile? file)
         {
-            Random rand = new Random();
-            var list = new List<TimeData>();
+            var data = new List<TimeData>();
 
-            for (int i = 0; i < 30; i++)
+            if (file != null && file.Length > 0)
             {
-                list.Add(new TimeData
+                using (var reader = new StreamReader(file.OpenReadStream()))
                 {
-                    Timestamp = DateTime.Now.AddMinutes(i),
-                    Value = rand.Next(10, 50)
-                });
+                    while (!reader.EndOfStream)
+                    {
+                        var line = reader.ReadLine();
+
+                        if (string.IsNullOrWhiteSpace(line))
+                            continue;
+
+                        var values = line.Split(',');
+
+                        if (values.Length < 2)
+                            continue;
+
+                        if (DateTime.TryParse(values[0], out DateTime time) &&
+                            double.TryParse(values[1], out double val))
+                        {
+                            data.Add(new TimeData
+                            {
+                                Timestamp = time,
+                                Value = val
+                            });
+                        }
+                    }
+                }
             }
 
-            list[5].Value = 120;
-            list[20].Value = 150;
+            var detector = new AnomalyDetector();
+            var result = detector.Detect(data) ?? new List<TimeData>();
 
-            return list;
-        }
+            TempData["LastUpload"] = DateTime.Now.ToString("dd-MM-yyyy HH:mm:ss");
 
-        public IActionResult Error()
-        {
-            return View();
+            return View("Index", result);
         }
     }
 }
