@@ -1,30 +1,41 @@
-﻿using TimeAnomalyWeb.Models;
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using TimeAnomalyWeb.Models;
 
 namespace TimeAnomalyWeb.Services
 {
     public class AnomalyDetector
     {
-        public List<TimeData> Detect(List<TimeData> data)
+        private const double Z_THRESHOLD = 2.0;
+
+        public List<TimeData> Detect(List<double> values)
         {
-            if (data == null || !data.Any())
-                return data;
+            var result = new List<TimeData>();
 
-            double mean = data.Any() ? data.Average(x => x.Value) : 0;
-            double std = data.Any() ? Math.Sqrt(data.Sum(x => Math.Pow(x.Value - mean, 2)) / data.Count) : 0;
+            if (values == null || values.Count == 0)
+                return result;
 
-            foreach (var d in data)
+            double mean = values.Average();
+            double variance = values.Select(v => Math.Pow(v - mean, 2)).Average();
+            double stdDev = Math.Sqrt(variance);
+
+            if (stdDev == 0)
+                stdDev = 1;
+
+            for (int i = 0; i < values.Count; i++)
             {
-                if (std == 0)
-                {
-                    d.IsAnomaly = false;
-                    continue;
-                }
+                double zScore = (values[i] - mean) / stdDev;
 
-                double z = (d.Value - mean) / std;
-                d.IsAnomaly = Math.Abs(z) > 2.5;
+                result.Add(new TimeData
+                {
+                    Timestamp = DateTime.Now.AddSeconds(i),
+                    Value = values[i],
+                    IsAnomaly = Math.Abs(zScore) > Z_THRESHOLD
+                });
             }
 
-            return data;
+            return result;
         }
     }
 }
