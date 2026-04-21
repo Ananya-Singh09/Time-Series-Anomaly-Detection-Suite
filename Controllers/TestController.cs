@@ -63,7 +63,7 @@ namespace TimeAnomalyWeb.Controllers
                 return View("Index", data);
             }
 
-            // Simple anomaly detection
+            
             double mean = values.Average();
             double stdDev = Math.Sqrt(values.Select(v => Math.Pow(v - mean, 2)).Average());
             if (stdDev == 0) stdDev = 1;

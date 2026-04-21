@@ -50,7 +50,6 @@ public class HomeController : Controller
             return RedirectToAction("Index");
         }
 
-        // Detect anomalies
         var mean = values.Average();
         var stdDev = Math.Sqrt(values.Select(v => Math.Pow(v - mean, 2)).Average());
         if (stdDev == 0) stdDev = 1;
