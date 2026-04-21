@@ -1,101 +1,84 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using System.Globalization;
-using TimeAnomalyWeb.Models;
-using TimeAnomalyWeb.Services;
+using System.Text.Json;
 
-namespace TimeAnomalyWeb.Controllers
+namespace SimpleAnomalyDetector.Controllers;
+
+public class HomeController : Controller
 {
-    public class HomeController : Controller
-    {
-        private static List<TimeData> _dataStore = new List<TimeData>();
-        private readonly AnomalyDetector _detector = new AnomalyDetector();
+    private static List<TimeData> _data = new();
 
-        public IActionResult Index()
+    public IActionResult Index()
+    {
+        return View(_data);
+    }
+
+    [HttpPost]
+    public IActionResult Upload(IFormFile file)
+    {
+        if (file == null || file.Length == 0)
         {
-            return View(_dataStore);
+            TempData["Error"] = "No file selected";
+            return RedirectToAction("Index");
         }
 
-        [HttpPost]
-        public IActionResult UploadCSV(IFormFile file)
+        var values = new List<double>();
+
+        using (var reader = new StreamReader(file.OpenReadStream()))
         {
-            var rawData = new List<TimeData>();
-            var values = new List<double>();
-
-            if (file == null || file.Length == 0)
+            string line;
+            int lineNum = 0;
+            while ((line = reader.ReadLine()) != null)
             {
-                Console.WriteLine("NO FILE RECEIVED");
-                return RedirectToAction("Index");
-            }
+                lineNum++;
+                if (string.IsNullOrWhiteSpace(line)) continue;
+                if (lineNum == 1 && line.ToLower().Contains("timestamp")) continue;
 
-            using (var reader = new StreamReader(file.OpenReadStream()))
-            {
-                int lineNumber = 0;
+                var parts = line.Split(',');
+                var valueStr = parts.Length == 1 ? parts[0] : parts[1];
 
-                while (!reader.EndOfStream)
+                if (double.TryParse(valueStr, NumberStyles.Any, CultureInfo.InvariantCulture, out double val))
                 {
-                    var line = reader.ReadLine();
-                    lineNumber++;
-
-                    Console.WriteLine($"LINE {lineNumber}: {line}");
-
-                    if (string.IsNullOrWhiteSpace(line))
-                        continue;
-
-                    if (lineNumber == 1)
-                        continue; // skip header
-
-                    var parts = line.Split(',');
-
-                    if (parts.Length < 2)
-                    {
-                        Console.WriteLine("INVALID FORMAT");
-                        continue;
-                    }
-
-                    string timeStr = parts[0].Trim();
-                    string valStr = parts[1].Trim();
-
-                    Console.WriteLine($"TIME: {timeStr}, VALUE: {valStr}");
-
-                    if (!DateTime.TryParse(timeStr, out DateTime timestamp))
-                    {
-                        Console.WriteLine("DATE PARSE FAILED");
-                        continue;
-                    }
-
-                    if (!double.TryParse(valStr, NumberStyles.Any, CultureInfo.InvariantCulture, out double value))
-                    {
-                        Console.WriteLine("VALUE PARSE FAILED");
-                        continue;
-                    }
-
-                    rawData.Add(new TimeData
-                    {
-                        Timestamp = timestamp,
-                        Value = value
-                    });
-
-                    values.Add(value);
+                    values.Add(val);
                 }
             }
-
-            Console.WriteLine($"TOTAL PARSED: {rawData.Count}");
-
-            if (values.Count == 0)
-            {
-                Console.WriteLine("NO VALID DATA");
-                return RedirectToAction("Index");
-            }
-
-            var detected = _detector.Detect(values);
-
-            for (int i = 0; i < rawData.Count; i++)
-            {
-                rawData[i].IsAnomaly = detected[i].IsAnomaly;
-            }
-
-            // 🔥 IMPORTANT: RETURN VIEW DIRECTLY (NO REDIRECT)
-            return View("Index", rawData);
         }
+
+        if (values.Count == 0)
+        {
+            TempData["Error"] = "No valid numbers found";
+            return RedirectToAction("Index");
+        }
+
+        // Detect anomalies
+        var mean = values.Average();
+        var stdDev = Math.Sqrt(values.Select(v => Math.Pow(v - mean, 2)).Average());
+        if (stdDev == 0) stdDev = 1;
+
+        _data = values.Select((v, i) => new TimeData
+        {
+            Id = i + 1,
+            Timestamp = DateTime.Now.AddSeconds(i),
+            Value = v,
+            IsAnomaly = Math.Abs((v - mean) / stdDev) > 2.0
+        }).ToList();
+
+        TempData["Success"] = $"Loaded {_data.Count} records, {_data.Count(x => x.IsAnomaly)} anomalies";
+        return RedirectToAction("Index");
     }
+
+    public IActionResult Clear()
+    {
+        _data.Clear();
+        TempData["Success"] = "Data cleared";
+        return RedirectToAction("Index");
+    }
+}
+
+public class TimeData
+{
+    public int Id { get; set; }
+    public DateTime Timestamp { get; set; }
+    public double Value { get; set; }
+    public bool IsAnomaly { get; set; }
 }

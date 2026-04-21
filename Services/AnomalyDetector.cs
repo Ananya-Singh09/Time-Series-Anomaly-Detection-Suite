@@ -7,8 +7,6 @@ namespace TimeAnomalyWeb.Services
 {
     public class AnomalyDetector
     {
-        private const double Z_THRESHOLD = 2.0;
-
         public List<TimeData> Detect(List<double> values)
         {
             var result = new List<TimeData>();
@@ -16,22 +14,31 @@ namespace TimeAnomalyWeb.Services
             if (values == null || values.Count == 0)
                 return result;
 
+            // Calculate mean and standard deviation
             double mean = values.Average();
-            double variance = values.Select(v => Math.Pow(v - mean, 2)).Average();
-            double stdDev = Math.Sqrt(variance);
+            double sumOfSquares = 0;
+
+            for (int i = 0; i < values.Count; i++)
+            {
+                sumOfSquares += Math.Pow(values[i] - mean, 2);
+            }
+
+            double stdDev = Math.Sqrt(sumOfSquares / values.Count);
 
             if (stdDev == 0)
                 stdDev = 1;
 
+            // Detect anomalies using Z-Score method
             for (int i = 0; i < values.Count; i++)
             {
-                double zScore = (values[i] - mean) / stdDev;
+                double zScore = Math.Abs((values[i] - mean) / stdDev);
+                bool isAnomaly = zScore > 2.0; // Values beyond 2 standard deviations are anomalies
 
                 result.Add(new TimeData
                 {
                     Timestamp = DateTime.Now.AddSeconds(i),
                     Value = values[i],
-                    IsAnomaly = Math.Abs(zScore) > Z_THRESHOLD
+                    IsAnomaly = isAnomaly
                 });
             }
 
